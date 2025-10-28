@@ -1,1 +1,82 @@
-💨 BME680 Environmental Sensor Application for Flipper ZeroThis is a comprehensive environmental monitoring application designed for the Flipper Zero that interfaces with the high-precision BME680 sensor via I2C. The BME680 is a sophisticated environmental sensor capable of measuring temperature, humidity, barometric pressure, and air quality (gas resistance).✨ Features Overview🌡️ Sensor MeasurementsThe application provides accurate and real-time readings for a full suite of environmental data:Temperature: Accurate temperature readings in Celsius ($\text{^\circ C}$).Barometric Pressure: Local atmospheric pressure in $\text{hPa}$, with an automatic calculation for Sea-Level Pressure.Humidity: Relative humidity percentage ($\%$).Gas Resistance: Air quality indicator via VOC (Volatile Organic Compounds) detection.Dew Point: Automatically calculated using the Magnus formula for meteorological completeness.⚙️ User Interface & ExperienceThe application is designed for clarity, ease of use, and quick access to information:Main Screen: A clean, scrollable card-based interface displaying all sensor readings with custom, informative icons.Settings Menu: A dedicated menu to configure sensor parameters and application preferences.Dark Mode: Optional dark theme for better visibility and a modern look in low-light conditions.Legend Screen: An interactive help screen with $\text{2D}$ panning that explains all custom icons and displays creator information.🔧 Configuration OptionsTailor the application to your specific hardware and location:I2C Address Selection: Toggle between $\text{0x76}$ and $\text{0x77}$ to match your specific sensor module.Gas Sensor Control: Enable/disable the heater element for VOC (air quality) measurements.Altitude Compensation: Set your local altitude ($\text{0-5000m}$) for accurate sea-level pressure calculation.Persistent Settings: All configurations are automatically saved to /ext/apps_data/bme680/config.bin and restored upon startup.💻 Technical Features & RobustnessBuilt for reliability and performance on the Flipper Zero platform:Forced Mode Operation: Sensor operates in forced mode for optimal power efficiency.I2C Communication: Robust $\text{I2C}$ interface with timeout protection.Thread-Safe: Uses mutex protection for concurrent data access, ensuring stability.Error Handling: Comprehensive error checking and logging to aid troubleshooting.Non-blocking UI: Sensor readings are processed in a way that doesn't freeze the user interface.Automatic Directory Creation: Creates necessary directories for configuration storage on the first run.🎨 Custom IconsClear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:IconMeasurementDescription🌡️ThermometerTemperature ($\text{^\circ C}$)📊GaugeBarometric Pressure ($\text{hPa}$)💧DropHumidity ($\%$) / Dew Point ($\text{^\circ C}$)🔥FlameGas Resistance ($\text{k}\Omega$) / Heater Status🕹️ NavigationScreenD-Pad Up/DownD-Pad Left/RightOK ButtonBack ButtonMain ScreenScroll through measurements-Enter SettingsExit applicationSettingsNavigate between optionsAdjust values (e.g., altitude, $\text{I2C}$ address)Select / Toggle optionReturn to Main Screen / Exit application (from Main Menu)LegendPan the contentPan the contentReturn to SettingsReturn to Settings💾 Configuration File DetailsSettings are stored securely in a custom binary format for efficiency:Magic Number Validation: Uses a magic number ($\text{0x42534D45}$, or "BSME") to ensure file integrity.Version Checking: Checks the configuration version for compatibility during load.Automatic Backup and Restore: Ensures settings are persistent and safe.👨‍💻 CreatorThis application was developed by Dr. Mosfet.
+# 💨 BME680 Environmental Sensor Application for Flipper Zero
+
+This is a **comprehensive environmental monitoring application** designed for the **Flipper Zero** that interfaces with the high-precision **BME680 sensor** via **I2C**. The BME680 is a sophisticated environmental sensor capable of measuring **temperature, humidity, barometric pressure, and air quality (gas resistance)**.
+
+## ✨ Features Overview
+
+### 🌡️ Sensor Measurements
+
+The application provides accurate and real-time readings for a full suite of environmental data:
+
+* **Temperature:** Accurate temperature readings in Celsius ($\text{^\circ C}$).
+* **Barometric Pressure:** Local atmospheric pressure in $\text{hPa}$, with an automatic calculation for **Sea-Level Pressure**.
+* **Humidity:** Relative humidity percentage ($\%$).
+* **Gas Resistance:** Air quality indicator via **VOC (Volatile Organic Compounds)** detection.
+* **Dew Point:** Automatically calculated using the **Magnus formula** for meteorological completeness.
+
+### ⚙️ User Interface & Experience
+
+The application is designed for clarity, ease of use, and quick access to information:
+
+* **Main Screen:** A clean, **scrollable card-based interface** displaying all sensor readings with custom, informative icons.
+* **Settings Menu:** A dedicated menu to **configure sensor parameters** and application preferences.
+* **Dark Mode:** Optional dark theme for better visibility and a modern look in low-light conditions.
+* **Legend Screen:** An **interactive help screen** with $\text{2D}$ panning that explains all custom icons and displays creator information.
+
+![Main Screen - Reading data](screenshots/1.png)
+![Settings Menu](screenshots/2.png)
+
+### 🔧 Configuration Options
+
+Tailor the application to your specific hardware and location:
+
+* **I2C Address Selection:** Toggle between $\text{0x76}$ and $\text{0x77}$ to match your specific sensor module.
+* **Gas Sensor Control:** **Enable/disable the heater element** for VOC (air quality) measurements.
+* **Altitude Compensation:** Set your local altitude ($\text{0-5000m}$) for accurate sea-level pressure calculation.
+* **Persistent Settings:** All configurations are automatically **saved to `/ext/apps_data/bme680/config.bin`** and restored upon startup.
+
+### 💻 Technical Features & Robustness
+
+Built for reliability and performance on the Flipper Zero platform:
+
+* **Forced Mode Operation:** Sensor operates in **forced mode** for optimal power efficiency.
+* **I2C Communication:** Robust $\text{I2C}$ interface with **timeout protection**.
+* **Thread-Safe:** Uses **mutex protection** for concurrent data access, ensuring stability.
+* **Error Handling:** Comprehensive error checking and logging to aid troubleshooting.
+* **Non-blocking UI:** Sensor readings are processed in a way that **doesn't freeze the user interface**.
+* **Automatic Directory Creation:** Creates necessary directories for configuration storage on the first run.
+
+### 🎨 Custom Icons
+
+Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
+
+| Icon | Measurement | Description |
+| :---: | :---: | :--- |
+| **🌡️** | **Thermometer** | Temperature ($\text{^\circ C}$) |
+| **📊** | **Gauge** | Barometric Pressure ($\text{hPa}$) |
+| **💧** | **Drop** | Humidity ($\%$) / Dew Point ($\text{^\circ C}$) |
+| **🔥** | **Flame** | Gas Resistance ($\text{k}\Omega$) / Heater Status |
+
+![Legend Screen - Icon explanation](screenshots/3.png)
+
+## 🕹️ Navigation
+
+| Screen | D-Pad Up/Down | D-Pad Left/Right | OK Button | Back Button |
+| :--- | :--- | :--- | :--- | :--- |
+| **Main Screen** | Scroll through measurements | - | Enter **Settings** | **Exit** application |
+| **Settings** | Navigate between options | Adjust values (e.g., altitude, $\text{I2C}$ address) | Select / Toggle option | Return to Main Screen / **Exit** application (from Main Menu) |
+| **Legend** | **Pan** the content | **Pan** the content | Return to Settings | Return to Settings |
+
+## 💾 Configuration File Details
+
+Settings are stored securely in a custom binary format for efficiency:
+
+* **Magic Number Validation:** Uses a magic number ($\text{0x42534D45}$, or `"BSME"`) to ensure file integrity.
+* **Version Checking:** Checks the configuration version for compatibility during load.
+* **Automatic Backup and Restore:** Ensures settings are persistent and safe.
+
+---
+
+## 👨‍💻 Creator
+
+This application was developed by **Dr. Mosfet**.
