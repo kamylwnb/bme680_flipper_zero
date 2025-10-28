@@ -69,30 +69,86 @@ Built for reliability and performance on the Flipper Zero platform:
 * **Non-blocking UI:** Sensor readings are processed in a way that **doesn't freeze the user interface**.
 * **Automatic Directory Creation:** Creates necessary directories for configuration storage on the first run.
 
-### 🎨 Custom Icons
+## 🎨 Custom Icons
 
 Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
 
-| Icon | Measurement | Description |
-| :---: | :---: | :--- |
-| **🌡️** | **Thermometer** | Temperature ($\text{^\circ C}$) |
-| **📊** | **Gauge** | Barometric Pressure ($\text{hPa}$) |
-| **💧** | **Drop** | Humidity ($\%$) / Dew Point ($\text{^\circ C}$) |
-| **🔥** | **Flame** | Gas Resistance ($\text{k}\Omega$) / Heater Status |
+<table style="width:100%; border:1px solid #ddd; border-collapse: collapse; text-align: left;">
+    <thead style="background-color: #f8f8f8;">
+        <tr>
+            <th style="padding: 8px; border:1px solid #ddd; text-align: center;">Icon</th>
+            <th style="padding: 8px; border:1px solid #ddd;">Measurement</th>
+            <th style="padding: 8px; border:1px solid #ddd;">Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>🌡️</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Thermometer</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;">Temperature ($\text{^\circ C}$)</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>📊</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Gauge</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;">Barometric Pressure ($\text{hPa}$)</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>💧</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Drop</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;">Humidity ($\%$) / Dew Point ($\text{^\circ C}$)</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>🔥</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Flame</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;">Gas Resistance ($\text{k}\Omega$) / Heater Status</td>
+        </tr>
+    </tbody>
+</table>
+
+---
 
 ## 🕹️ Navigation
 
-| Screen | D-Pad Up/Down | D-Pad Left/Right | OK Button | Back Button |
-| :--- | :--- | :--- | :--- | :--- |
-| **Main Screen** | Scroll through measurements | - | Enter **Settings** | **Exit** application |
-| **Settings** | Navigate between options | Adjust values (e.g., altitude, $\text{I2C}$ address) | Select / Toggle option | Return to Main Screen / **Exit** application (from Main Menu) |
-| **Legend** | **Pan** the content | **Pan** the content | Return to Settings | Return to Settings |
+<table style="width:100%; border:1px solid #ddd; border-collapse: collapse; text-align: left;">
+    <thead style="background-color: #f8f8f8;">
+        <tr>
+            <th style="padding: 8px; border:1px solid #ddd;">Screen</th>
+            <th style="padding: 8px; border:1px solid #ddd;">D-Pad Up/Down</th>
+            <th style="padding: 8px; border:1px solid #ddd;">D-Pad Left/Right</th>
+            <th style="padding: 8px; border:1px solid #ddd;">OK Button</th>
+            <th style="padding: 8px; border:1px solid #ddd;">Back Button</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Main Screen</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;">Scroll through measurements</td>
+            <td style="padding: 8px; border:1px solid #ddd;">-</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Enter <strong>Settings</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Exit</strong> application</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Settings</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;">Navigate between options</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Adjust values (e.g., altitude, $\text{I2C}$ address)</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Select / Toggle option</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Return to Main Screen / <strong>Exit</strong> application (from Main Menu)</td>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Legend</strong></td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Pan</strong> the content</td>
+            <td style="padding: 8px; border:1px solid #ddd;"><strong>Pan</strong> the content</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Return to Settings</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Return to Settings</td>
+        </tr>
+    </tbody>
+</table>
 
 ## 💾 Configuration File Details
 
 Settings are stored securely in a custom binary format for efficiency:
 
-* **Magic Number Validation:** Uses a magic number ($\text{0x42534D45}$, or `"BSME"`) to ensure file integrity.
+* **Magic Number Validation:** Uses a magic number ($\text{0x42534D45}$, or `"BSME"$) to ensure file integrity.
 * **Version Checking:** Checks the configuration version for compatibility during load.
 * **Automatic Backup and Restore:** Ensures settings are persistent and safe.
 
