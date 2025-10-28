@@ -34,9 +34,9 @@ This is a **comprehensive environmental monitoring application** designed for th
 
 The application provides accurate and real-time readings for a full suite of environmental data:
 
-* **Temperature:** Accurate temperature readings in Celsius ($\text{^\circ C}$).
-* **Barometric Pressure:** Local atmospheric pressure in $\text{hPa}$, with an automatic calculation for **Sea-Level Pressure**.
-* **Humidity:** Relative humidity percentage ($\%$).
+* **Temperature:** Accurate temperature readings in Celsius (**°C**).
+* **Barometric Pressure:** Local atmospheric pressure in **hPa**, with an automatic calculation for **Sea-Level Pressure**.
+* **Humidity:** Relative humidity percentage (**%**).
 * **Gas Resistance:** Air quality indicator via **VOC (Volatile Organic Compounds)** detection.
 * **Dew Point:** Automatically calculated using the **Magnus formula** for meteorological completeness.
 
@@ -47,15 +47,15 @@ The application is designed for clarity, ease of use, and quick access to inform
 * **Main Screen:** A clean, **scrollable card-based interface** displaying all sensor readings with custom, informative icons.
 * **Settings Menu:** A dedicated menu to **configure sensor parameters** and application preferences.
 * **Dark Mode:** Optional dark theme for better visibility and a modern look in low-light conditions.
-* **Legend Screen:** An **interactive help screen** with $\text{2D}$ panning that explains all custom icons and displays creator information.
+* **Legend Screen:** An **interactive help screen** with **2D** panning that explains all custom icons and displays creator information.
 
 ### 🔧 Configuration Options
 
 Tailor the application to your specific hardware and location:
 
-* **I2C Address Selection:** Toggle between $\text{0x76}$ and $\text{0x77}$ to match your specific sensor module.
+* **I2C Address Selection:** Toggle between **0x76** and **0x77** to match your specific sensor module.
 * **Gas Sensor Control:** **Enable/disable the heater element** for VOC (air quality) measurements.
-* **Altitude Compensation:** Set your local altitude ($\text{0-5000m}$) for accurate sea-level pressure calculation.
+* **Altitude Compensation:** Set your local altitude (**0-5000m**) for accurate sea-level pressure calculation.
 * **Persistent Settings:** All configurations are automatically **saved to `/ext/apps_data/bme680/config.bin`** and restored upon startup.
 
 ### 💻 Technical Features & Robustness
@@ -63,7 +63,7 @@ Tailor the application to your specific hardware and location:
 Built for reliability and performance on the Flipper Zero platform:
 
 * **Forced Mode Operation:** Sensor operates in **forced mode** for optimal power efficiency.
-* **I2C Communication:** Robust $\text{I2C}$ interface with **timeout protection**.
+* **I2C Communication:** Robust **I2C** interface with **timeout protection**.
 * **Thread-Safe:** Uses **mutex protection** for concurrent data access, ensuring stability.
 * **Error Handling:** Comprehensive error checking and logging to aid troubleshooting.
 * **Non-blocking UI:** Sensor readings are processed in a way that **doesn't freeze the user interface**.
@@ -71,7 +71,7 @@ Built for reliability and performance on the Flipper Zero platform:
 
 ## 🎨 Custom Icons
 
-Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
+Clear, custom **10x10 pixel XBM** icons are used for each measurement:
 
 <table style="width:100%; border:1px solid #ddd; border-collapse: collapse; text-align: left;">
     <thead style="background-color: #f8f8f8;">
@@ -85,22 +85,22 @@ Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
         <tr>
             <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>🌡️</strong></td>
             <td style="padding: 8px; border:1px solid #ddd;"><strong>Thermometer</strong></td>
-            <td style="padding: 8px; border:1px solid #ddd;">Temperature ($\text{^\circ C}$)</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Temperature (°C)</td>
         </tr>
         <tr>
             <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>📊</strong></td>
             <td style="padding: 8px; border:1px solid #ddd;"><strong>Gauge</strong></td>
-            <td style="padding: 8px; border:1px solid #ddd;">Barometric Pressure ($\text{hPa}$)</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Barometric Pressure (hPa)</td>
         </tr>
         <tr>
             <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>💧</strong></td>
             <td style="padding: 8px; border:1px solid #ddd;"><strong>Drop</strong></td>
-            <td style="padding: 8px; border:1px solid #ddd;">Humidity ($\%$) / Dew Point ($\text{^\circ C}$)</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Humidity (%) / Dew Point (°C)</td>
         </tr>
         <tr>
             <td style="padding: 8px; border:1px solid #ddd; text-align: center;"><strong>🔥</strong></td>
             <td style="padding: 8px; border:1px solid #ddd;"><strong>Flame</strong></td>
-            <td style="padding: 8px; border:1px solid #ddd;">Gas Resistance ($\text{k}\Omega$) / Heater Status</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Gas Resistance (kΩ) / Heater Status</td>
         </tr>
     </tbody>
 </table>
@@ -130,7 +130,7 @@ Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
         <tr>
             <td style="padding: 8px; border:1px solid #ddd;"><strong>Settings</strong></td>
             <td style="padding: 8px; border:1px solid #ddd;">Navigate between options</td>
-            <td style="padding: 8px; border:1px solid #ddd;">Adjust values (e.g., altitude, $\text{I2C}$ address)</td>
+            <td style="padding: 8px; border:1px solid #ddd;">Adjust values (e.g., altitude, I2C address)</td>
             <td style="padding: 8px; border:1px solid #ddd;">Select / Toggle option</td>
             <td style="padding: 8px; border:1px solid #ddd;">Return to Main Screen / <strong>Exit</strong> application (from Main Menu)</td>
         </tr>
@@ -148,7 +148,7 @@ Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
 
 Settings are stored securely in a custom binary format for efficiency:
 
-* **Magic Number Validation:** Uses a magic number ($\text{0x42534D45}$, or `"BSME"$) to ensure file integrity.
+* **Magic Number Validation:** Uses a magic number (**0x42534D45**, or "BSME") to ensure file integrity.
 * **Version Checking:** Checks the configuration version for compatibility during load.
 * **Automatic Backup and Restore:** Ensures settings are persistent and safe.
 
