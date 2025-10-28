@@ -1,5 +1,31 @@
 # 💨 BME680 Environmental Sensor Application for Flipper Zero
 
+<h2 align="center">A Comprehensive Environmental Monitor for Flipper Zero</h2>
+
+<div align="center">
+    <table style="width:100%; border:none;">
+        <tr style="border:none;">
+            <td style="border:none; padding:10px;">
+                <img src="screenshots/1.png" alt="Main Screen - Reading data" style="width:100%;">
+                <br>
+                <em>Główny ekran z pomiarami (Temp, Ciśnienie, Wilgotność)</em>
+            </td>
+            <td style="border:none; padding:10px;">
+                <img src="screenshots/2.png" alt="Settings Menu" style="width:100%;">
+                <br>
+                <em>Menu Ustawień (np. Adres I2C, Wysokość)</em>
+            </td>
+            <td style="border:none; padding:10px;">
+                <img src="screenshots/3.png" alt="Legend Screen - Icon explanation" style="width:100%;">
+                <br>
+                <em>Ekran Legendy z objaśnieniem ikon</em>
+            </td>
+        </tr>
+    </table>
+</div>
+
+---
+
 This is a **comprehensive environmental monitoring application** designed for the **Flipper Zero** that interfaces with the high-precision **BME680 sensor** via **I2C**. The BME680 is a sophisticated environmental sensor capable of measuring **temperature, humidity, barometric pressure, and air quality (gas resistance)**.
 
 ## ✨ Features Overview
@@ -22,9 +48,6 @@ The application is designed for clarity, ease of use, and quick access to inform
 * **Settings Menu:** A dedicated menu to **configure sensor parameters** and application preferences.
 * **Dark Mode:** Optional dark theme for better visibility and a modern look in low-light conditions.
 * **Legend Screen:** An **interactive help screen** with $\text{2D}$ panning that explains all custom icons and displays creator information.
-
-![Main Screen - Reading data](screenshots/1.png)
-![Settings Menu](screenshots/2.png)
 
 ### 🔧 Configuration Options
 
@@ -56,8 +79,6 @@ Clear, custom $\text{10x10}$ pixel XBM icons are used for each measurement:
 | **📊** | **Gauge** | Barometric Pressure ($\text{hPa}$) |
 | **💧** | **Drop** | Humidity ($\%$) / Dew Point ($\text{^\circ C}$) |
 | **🔥** | **Flame** | Gas Resistance ($\text{k}\Omega$) / Heater Status |
-
-![Legend Screen - Icon explanation](screenshots/3.png)
 
 ## 🕹️ Navigation
 
