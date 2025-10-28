@@ -1,5 +1,5 @@
 App(
-    appid="bme680",
+    appid="bme680_flipper_zero",
     name="BME680",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="bme680_app",
