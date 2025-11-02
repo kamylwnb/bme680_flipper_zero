@@ -1,0 +1,18 @@
+# BME680 Gas Sensor Application Manifest
+# Format zgodny z Flipper Application Catalog
+sourcecode:
+  type: git
+  location:
+    origin: https://github.com/kamylwnb/bme680_flipper_zero
+    commit_sha: c42afa0a9408116ccf1b7abe8d2f7d3a94183d5f
+short_description: "BME680 environmental sensor with gas leak detection"
+description: |
+  Advanced environmental monitoring application for Flipper Zero with gas safety alerts.
+  Features real-time measurement of temperature, humidity, pressure, and gas resistance.
+  Includes configurable gas alarm system with LED/sound notifications, stabilization periods,
+  scrollable UI, and persistent settings. Perfect for air quality monitoring and gas detection.
+changelog: "@CHANGELOG.md"
+screenshots:
+  - screenshots/1.png
+  - screenshots/2.png
+  - screenshots/3.png
