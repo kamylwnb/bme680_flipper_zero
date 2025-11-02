@@ -28,6 +28,7 @@ App(
     fap_category="GPIO",
     fap_author="<Twoje imię/nazwa>",
     fap_weburl="",
-    fap_version="1.0",
+    fap_version="1.2",
     fap_description="BME680 environmental sensor with gas leak detection, LED/sound alerts, and configurable safety thresholds.",
 )
+
