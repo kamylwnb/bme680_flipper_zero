@@ -11,6 +11,9 @@
 #include <string.h>
 #include <math.h>
 #include <storage/storage.h>
+#include <notification/notification.h>
+#include <notification/notification_messages.h>
+#include <furi_hal_rtc.h>
 
 // BME680 I2C address options
 #define BME680_I2C_ADDR_LOW  0x77
@@ -21,6 +24,16 @@
 #define BME680_CONFIG_MAGIC   0x42534D45 // "BSME"
 #define BME680_CONFIG_VERSION 1
 
+// Gas danger thresholds
+#define GAS_DANGER_THRESHOLD_LOW   50000  // Below this = dangerous gas levels
+#define GAS_SAFE_THRESHOLD_HIGH    100000 // Above this = safe gas levels
+// Between these values = uncertain/transition zone
+
+// Gas stabilization period in seconds
+#define GAS_STABILIZATION_TIME_SEC 30
+// Entry/exit cooldown period in seconds
+#define ENTRY_EXIT_COOLDOWN_SEC 60
+
 // Application States
 typedef enum {
     AppState_Main,
@@ -30,12 +43,21 @@ typedef enum {
     AppState_Legend, // Legend screen with icon explanations and author
 } AppState;
 
+// Gas Safety States
+typedef enum {
+    GasSafety_Unknown,    // Initial state or no gas readings
+    GasSafety_Safe,       // Gas levels are safe (high resistance)
+    GasSafety_Dangerous,  // Gas levels are dangerous (low resistance)
+    GasSafety_Warning     // Gas levels in transition zone
+} GasSafetyState;
+
 // Enumeration for options in the settings menu
 typedef enum {
     SettingsItem_Start,
     SettingsItem_Address,
     SettingsItem_OperationMode,
     SettingsItem_GasSensor, // Enable/disable heater (gas)
+    SettingsItem_GasThreshold, // Gas alarm threshold in kOhm
     SettingsItem_Altitude, // Altitude in meters for sea-level pressure calc
     SettingsItem_Legend, // Legend: icons and author info
     SettingsItem_DarkMode,
@@ -51,6 +73,7 @@ typedef struct {
     bool gas_enabled;
     bool dark_mode;
     float altitude_m;
+    uint32_t gas_alarm_threshold_kohm; // Gas alarm threshold in kOhm
 } BME680Config;
 
 // Structure to store application state
@@ -88,6 +111,17 @@ typedef struct {
     // Legend pan (2D)
     int16_t legend_pan_x;
     int16_t legend_pan_y;
+    
+    // Gas safety monitoring
+    GasSafetyState gas_safety_state;
+    uint32_t gas_safety_timer_ms;
+    bool led_notification_active;
+    uint32_t gas_alarm_threshold_kohm; // User-configurable alarm threshold in kOhm
+    uint32_t gas_stabilization_start_time; // RTC timestamp when measurement started
+    bool gas_stabilization_period; // True during 30s stabilization period
+    uint32_t last_measurement_stop_time; // RTC timestamp when measurement was last stopped
+    bool entry_exit_cooldown; // True during 1min cooldown between start/stop
+    NotificationApp* notification;
 } BME680App;
 
 // --- Configuration File Functions ---
@@ -110,6 +144,7 @@ static bool bme680_save_config(BME680App* app) {
             .gas_enabled = app->gas_enabled,
             .dark_mode = app->dark_mode,
             .altitude_m = app->altitude_m,
+            .gas_alarm_threshold_kohm = app->gas_alarm_threshold_kohm,
         };
 
         size_t written = storage_file_write(file, &config, sizeof(BME680Config));
@@ -168,6 +203,10 @@ static bool bme680_load_config(BME680App* app) {
 
             if(config.altitude_m >= 0.0f && config.altitude_m <= 5000.0f) {
                 app->altitude_m = config.altitude_m;
+            }
+
+            if(config.gas_alarm_threshold_kohm >= 1 && config.gas_alarm_threshold_kohm <= 1000) {
+                app->gas_alarm_threshold_kohm = config.gas_alarm_threshold_kohm;
             }
 
             success = true;
@@ -328,8 +367,108 @@ static bool init_bme680(BME680App* app) {
     app->op_mode = BME68X_FORCED_MODE; // forced mode used in reads
 
     app->is_sensor_initialized = true;
-    FURI_LOG_I("BME680", "Sensor initialized successfully.");
+    
+    // Check if we need to start stabilization period (only if not already running)
+    if(!app->gas_stabilization_period) {
+        app->gas_stabilization_start_time = furi_hal_rtc_get_timestamp();
+        app->gas_stabilization_period = true;
+        FURI_LOG_I("BME680", "Sensor initialized successfully. Gas stabilization period started (30s).");
+    } else {
+        FURI_LOG_I("BME680", "Sensor initialized successfully. Gas stabilization already in progress.");
+    }
+    
     return true;
+}
+
+// Function to check if measurement can be started (1min cooldown)
+static bool can_start_measurement(BME680App* app) {
+    if(app->last_measurement_stop_time == 0) {
+        return true; // Never stopped before
+    }
+    
+    uint32_t current_time = furi_hal_rtc_get_timestamp();
+    uint32_t elapsed_seconds = current_time - app->last_measurement_stop_time;
+    
+    return elapsed_seconds >= ENTRY_EXIT_COOLDOWN_SEC;
+}
+
+// Function to get remaining cooldown time in seconds
+static uint32_t get_cooldown_remaining(BME680App* app) {
+    if(app->last_measurement_stop_time == 0) {
+        return 0;
+    }
+    
+    uint32_t current_time = furi_hal_rtc_get_timestamp();
+    uint32_t elapsed_seconds = current_time - app->last_measurement_stop_time;
+    
+    if(elapsed_seconds >= ENTRY_EXIT_COOLDOWN_SEC) {
+        return 0;
+    }
+    
+    return ENTRY_EXIT_COOLDOWN_SEC - elapsed_seconds;
+}
+
+// Function to evaluate gas safety based on resistance reading
+static GasSafetyState evaluate_gas_safety(uint32_t gas_resistance, uint32_t threshold_kohm) {
+    if(gas_resistance == 0) {
+        return GasSafety_Unknown; // No valid reading
+    }
+    
+    uint32_t threshold_ohm = threshold_kohm * 1000; // Convert kOhm to Ohm
+    
+    if(gas_resistance < threshold_ohm) {
+        return GasSafety_Dangerous; // Below threshold = more gas = dangerous (alarm)
+    } else {
+        return GasSafety_Safe; // Above threshold = less gas = safe
+    }
+}
+
+// Function to update LED notifications based on gas safety state
+static void update_gas_led_notifications(BME680App* app, GasSafetyState new_state) {
+    if(!app->notification || !app->gas_enabled) {
+        return;
+    }
+    
+    // Only update if state changed or we need to continue blinking
+    bool state_changed = (app->gas_safety_state != new_state);
+    
+    if(state_changed) {
+        // Stop any current LED activity
+        notification_message(app->notification, &sequence_reset_rgb);
+        app->led_notification_active = false;
+    }
+    
+    switch(new_state) {
+        case GasSafety_Dangerous:
+            // Blinking red LED + sound for dangerous gas levels (alarm)
+            if(state_changed || !app->led_notification_active) {
+                notification_message(app->notification, &sequence_blink_start_red);
+                notification_message(app->notification, &sequence_audiovisual_alert);
+                app->led_notification_active = true;
+            }
+            break;
+            
+        case GasSafety_Safe:
+            // Solid green LED for safe levels
+            if(state_changed) {
+                notification_message(app->notification, &sequence_set_only_green_255);
+                app->led_notification_active = true;
+            }
+            break;
+            
+        case GasSafety_Warning:
+        case GasSafety_Unknown:
+        default:
+            // Turn off LED for unknown state
+            if(state_changed) {
+                notification_message(app->notification, &sequence_reset_rgb);
+                notification_message(app->notification, &sequence_blink_stop);
+                app->led_notification_active = false;
+            }
+            break;
+    }
+    
+    app->gas_safety_state = new_state;
 }
 
 // Function to read data from BME680
@@ -385,7 +524,36 @@ static bool read_bme680(BME680App* app) {
             float gamma = logf(rh / 100.0f) + (a * app->temperature) / (b + app->temperature);
             app->dew_point_c = (b * gamma) / (a - gamma);
         }
-        furi_mutex_release(app->mutex);
+        
+        // Check if stabilization period has ended
+        if(app->gas_stabilization_period) {
+            uint32_t current_time = furi_hal_rtc_get_timestamp();
+            uint32_t elapsed_seconds = current_time - app->gas_stabilization_start_time;
+            
+            if(elapsed_seconds >= GAS_STABILIZATION_TIME_SEC) {
+                app->gas_stabilization_period = false;
+                FURI_LOG_I("BME680", "Gas stabilization period ended. Alarm monitoring active.");
+            }
+        }
+        
+        // Evaluate gas safety and update LED notifications
+        if(app->gas_enabled && app->gas_resistance > 0) {
+            GasSafetyState new_safety_state;
+            
+            // During stabilization period, always show as safe (no alarm)
+            if(app->gas_stabilization_period) {
+                new_safety_state = GasSafety_Safe;
+            } else {
+                new_safety_state = evaluate_gas_safety(app->gas_resistance, app->gas_alarm_threshold_kohm);
+            }
+            
+            furi_mutex_release(app->mutex);
+            update_gas_led_notifications(app, new_safety_state);
+        } else {
+            furi_mutex_release(app->mutex);
+            // If gas sensor is disabled, turn off gas safety LEDs
+            update_gas_led_notifications(app, GasSafety_Unknown);
+        }
 
         success = true;
     } else {
@@ -613,7 +781,7 @@ static void draw_main_screen(Canvas* canvas, BME680App* app) {
         char buf[32];
 
         // Scrollable card layout: show 3 items, scroll with Up/Down; draw scrollbar at right
-        const int items_count = 4; // 0:T, 1:P, 2:H+Dew, 3:Gas
+        const int items_count = 5; // 0:T, 1:P, 2:H+Dew, 3:Gas, 4:GasSafety
         const int visible = 3;
         const int x = 2;
         const int w = 118; // leave room for scrollbar on the right
@@ -630,7 +798,9 @@ static void draw_main_screen(Canvas* canvas, BME680App* app) {
         for(int i = 0; i < visible; i++) {
             int idx = offset + i;
             int y = y0 + i * y_step;
+            
             draw_round_frame(canvas, x, y, w, h, r);
+            
             switch(idx) {
             case 0: {
                 // ICON PLACEHOLDER (bitmap): Temperature – podmień ICON_THERMO_10x10
@@ -666,6 +836,39 @@ static void draw_main_screen(Canvas* canvas, BME680App* app) {
                     snprintf(buf, sizeof(buf), "G: Wait...");
                 }
                 canvas_draw_str(canvas, x + 18, y + 10, buf);
+            } break;
+            case 4: {
+                // Gas Safety Status card
+                if(app->gas_enabled && app->gas_safety_state != GasSafety_Unknown) {
+                    // Check if we're in stabilization period
+                    if(app->gas_stabilization_period) {
+                        uint32_t current_time = furi_hal_rtc_get_timestamp();
+                        uint32_t elapsed_seconds = current_time - app->gas_stabilization_start_time;
+                        uint32_t remaining_seconds = GAS_STABILIZATION_TIME_SEC - elapsed_seconds;
+                        
+                        if(remaining_seconds > GAS_STABILIZATION_TIME_SEC) remaining_seconds = 0; // Handle overflow
+                        
+                        snprintf(buf, sizeof(buf), "⏱ Stabilizing... %lus", remaining_seconds);
+                        canvas_draw_str(canvas, x + 5, y + 10, buf);
+                    } else {
+                        // Normal monitoring
+                        switch(app->gas_safety_state) {
+                            case GasSafety_Safe:
+                                snprintf(buf, sizeof(buf), "✓ SAFE (>%lukΩ)", app->gas_alarm_threshold_kohm);
+                                break;
+                            case GasSafety_Dangerous:
+                                snprintf(buf, sizeof(buf), "⚠ ALARM! (<%lukΩ)", app->gas_alarm_threshold_kohm);
+                                break;
+                            default:
+                                snprintf(buf, sizeof(buf), "? UNKNOWN");
+                                break;
+                        }
+                        canvas_draw_str(canvas, x + 5, y + 10, buf);
+                    }
+                } else {
+                    snprintf(buf, sizeof(buf), "Gas monitoring OFF");
+                    canvas_draw_str(canvas, x + 5, y + 10, buf);
+                }
             } break;
             default:
                 break;
@@ -766,6 +969,15 @@ static void draw_settings_screen(Canvas* canvas, BME680App* app) {
                 canvas, 113, y_pos - 1, AlignRight, AlignTop, app->gas_enabled ? "On" : "Off");
             break;
 
+        case SettingsItem_GasThreshold:
+            canvas_draw_str(canvas, 5, y_pos + 5, "Gas Threshold:");
+            {
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%lukΩ", app->gas_alarm_threshold_kohm);
+                canvas_draw_str_aligned(canvas, 113, y_pos - 1, AlignRight, AlignTop, buf);
+            }
+            break;
+
         case SettingsItem_Altitude:
             canvas_draw_str(canvas, 5, y_pos + 5, "Altitude:");
             {
@@ -809,13 +1021,32 @@ static void draw_about_screen(Canvas* canvas, BME680App* app) {
 }
 
 static void draw_start_confirm_screen(Canvas* canvas, BME680App* app) {
-    UNUSED(app);
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
-    canvas_draw_str_aligned(canvas, 64, 20, AlignCenter, AlignTop, "Start Measurement?");
-
+    canvas_draw_str_aligned(canvas, 64, 10, AlignCenter, AlignTop, "Start Measurement");
+    
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, 64, 60, AlignCenter, AlignBottom, "[Ok] Start [Back] Cancel");
+    
+    uint32_t cooldown_remaining = get_cooldown_remaining(app);
+    
+    if(cooldown_remaining > 0) {
+        // Show cooldown timer
+        canvas_draw_str_aligned(canvas, 64, 25, AlignCenter, AlignTop, "Please wait...");
+        
+        char time_str[32];
+        uint32_t minutes = cooldown_remaining / 60;
+        uint32_t seconds = cooldown_remaining % 60;
+        snprintf(time_str, sizeof(time_str), "Cooldown: %lum %lus", minutes, seconds);
+        canvas_draw_str_aligned(canvas, 64, 38, AlignCenter, AlignTop, time_str);
+        
+        canvas_draw_str_aligned(canvas, 64, 55, AlignCenter, AlignTop, "[Back] Cancel");
+    } else {
+        // Can start measurement
+        canvas_draw_str_aligned(canvas, 64, 25, AlignCenter, AlignTop, "Ready to start");
+        canvas_draw_str_aligned(canvas, 64, 38, AlignCenter, AlignTop, "gas monitoring");
+        
+        canvas_draw_str_aligned(canvas, 64, 55, AlignCenter, AlignTop, "[OK] Start  [Back] Cancel");
+    }
 }
 
 static void bme680_render_callback(Canvas* canvas, void* ctx) {
@@ -851,12 +1082,22 @@ static void bme680_input_callback(InputEvent* input_event, void* ctx) {
             if(input_event->key == InputKeyOk) {
                 app->current_state = AppState_Settings;
             } else if(input_event->key == InputKeyBack) {
-                // Back first goes to menu (Settings) before exiting the app
-                app->current_state = AppState_Settings;
+                if(input_event->type == InputTypeShort) {
+                    // Short press: go to settings
+                    app->current_state = AppState_Settings;
+                } else if(input_event->type == InputTypeLong) {
+                    // Long press: stop measurement
+                    if(app->started) {
+                        app->started = false;
+                        app->is_sensor_initialized = false;
+                        app->last_measurement_stop_time = furi_hal_rtc_get_timestamp();
+                        FURI_LOG_I("BME680", "Measurement stopped. Cooldown period started.");
+                    }
+                }
             } else if(input_event->key == InputKeyRight) {
                 app->current_state = AppState_About;
             } else if(input_event->key == InputKeyUp || input_event->key == InputKeyDown) {
-                const int items_count = 4;
+                const int items_count = 5;
                 const int visible = 3;
                 int max_offset = items_count - visible;
                 if(max_offset < 0) max_offset = 0;
@@ -889,7 +1130,26 @@ static void bme680_input_callback(InputEvent* input_event, void* ctx) {
                     app->gas_enabled = !app->gas_enabled;
                     if(app->is_sensor_initialized) {
                         bme680_apply_heater(app);
+                        // If gas sensor was just enabled, start stabilization period
+                        if(app->gas_enabled) {
+                            app->gas_stabilization_start_time = furi_hal_rtc_get_timestamp();
+                            app->gas_stabilization_period = true;
+                            FURI_LOG_I("BME680", "Gas sensor enabled. Stabilization period started.");
+                        }
                     }
+                    config_changed = true;
+                } else if(app->settings_cursor == SettingsItem_GasThreshold) {
+                    uint32_t step = 5; // 5 kOhm step
+                    if(input_event->key == InputKeyLeft) {
+                        if(app->gas_alarm_threshold_kohm > step) {
+                            app->gas_alarm_threshold_kohm -= step;
+                        } else {
+                            app->gas_alarm_threshold_kohm = 1;
+                        }
+                    } else {
+                        app->gas_alarm_threshold_kohm += step;
+                    }
+                    if(app->gas_alarm_threshold_kohm > 1000) app->gas_alarm_threshold_kohm = 1000;
                     config_changed = true;
                 } else if(app->settings_cursor == SettingsItem_Altitude) {
                     float step = 5.0f;
@@ -930,9 +1190,14 @@ static void bme680_input_callback(InputEvent* input_event, void* ctx) {
 
         case AppState_StartConfirm:
             if(input_event->key == InputKeyOk) {
-                app->started = true;
-                app->is_sensor_initialized = false;
-                app->current_state = AppState_Main;
+                if(can_start_measurement(app)) {
+                    app->started = true;
+                    app->is_sensor_initialized = false;
+                    app->entry_exit_cooldown = false;
+                    app->current_state = AppState_Main;
+                } else {
+                    // Can't start yet - stay in confirm state to show cooldown
+                }
             } else if(input_event->key == InputKeyBack) {
                 app->current_state = AppState_Settings;
             }
@@ -986,6 +1251,17 @@ static BME680App* bme680_app_alloc() {
     app->humidity = 0.0f;
     app->gas_resistance = 0;
     app->data_status = 0;
+    
+    // Initialize gas safety monitoring
+    app->gas_safety_state = GasSafety_Unknown;
+    app->gas_safety_timer_ms = 0;
+    app->led_notification_active = false;
+    app->gas_alarm_threshold_kohm = 50; // Default 50 kOhm threshold
+    app->gas_stabilization_start_time = 0;
+    app->gas_stabilization_period = false;
+    app->last_measurement_stop_time = 0;
+    app->entry_exit_cooldown = false;
+    app->notification = (NotificationApp*)furi_record_open(RECORD_NOTIFICATION);
 
     // Initialize mutex BEFORE loading config
     app->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
@@ -1005,6 +1281,14 @@ static BME680App* bme680_app_alloc() {
 
 static void bme680_app_free(BME680App* app) {
     furi_assert(app);
+    
+    // Turn off any active LED notifications before cleanup
+    if(app->notification) {
+        notification_message(app->notification, &sequence_reset_rgb);
+        notification_message(app->notification, &sequence_blink_stop);
+        furi_record_close(RECORD_NOTIFICATION);
+    }
+    
     gui_remove_view_port(app->gui, app->view_port);
     view_port_free(app->view_port);
     furi_record_close(RECORD_GUI);
@@ -1030,6 +1314,7 @@ extern "C" int32_t bme680_app(void* p) {
         view_port_update(app->view_port);
         furi_delay_ms(50);
         app->sample_elapsed_ms += 50;
+        app->gas_safety_timer_ms += 50;
     }
 
     bme680_app_free(app);
