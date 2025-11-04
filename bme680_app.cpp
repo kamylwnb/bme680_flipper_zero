@@ -512,20 +512,28 @@ static bool read_bme680(BME680App* app) {
         // 5) Zaktualizuj odczyty
         const struct bme68x_data* d = &app->sensor_data[idx];
         furi_mutex_acquire(app->mutex, FuriWaitForever);
-        app->temperature = d->temperature;
-        app->pressure = d->pressure / 100.0f;
-        app->humidity = d->humidity;
-        app->gas_resistance = (uint32_t)d->gas_resistance;
-        app->data_status = d->status;
-        // Compute dew point (Magnus formula)
-        {
+        
+        // When gas sensor is enabled, temperature and humidity are affected by heater
+        // so we don't update them to avoid false readings
+        if(!app->gas_enabled) {
+            app->temperature = d->temperature;
+            app->humidity = d->humidity;
+            // Compute dew point (Magnus formula) only when humidity is valid
             const float a = 17.62f;
             const float b = 243.12f;
             float rh = app->humidity;
             if(rh < 0.1f) rh = 0.1f; // avoid log(0)
             float gamma = logf(rh / 100.0f) + (a * app->temperature) / (b + app->temperature);
             app->dew_point_c = (b * gamma) / (a - gamma);
+        } else {
+            // In gas mode, keep previous T/H values or set to invalid values
+            // This prevents displaying inaccurate readings affected by the heater
         }
+        
+        // Pressure is not significantly affected by the heater, so always update it
+        app->pressure = d->pressure / 100.0f;
+        app->gas_resistance = (uint32_t)d->gas_resistance;
+        app->data_status = d->status;
 
         // Check if stabilization period has ended
         if(app->gas_stabilization_period) {
@@ -806,7 +814,11 @@ static void draw_main_screen(Canvas* canvas, BME680App* app) {
             case 0: {
                 // ICON PLACEHOLDER (bitmap): Temperature – podmień ICON_THERMO_10x10
                 draw_icon_thermo(canvas, x + 9, y + 7);
-                snprintf(buf, sizeof(buf), "T: %.1fC", (double)temp);
+                if(app->gas_enabled) {
+                    snprintf(buf, sizeof(buf), "T: Off (Gas mode)");
+                } else {
+                    snprintf(buf, sizeof(buf), "T: %.1fC", (double)temp);
+                }
                 canvas_draw_str(canvas, x + 18, y + 10, buf);
             } break;
             case 1: {
@@ -819,7 +831,11 @@ static void draw_main_screen(Canvas* canvas, BME680App* app) {
             case 2: {
                 // ICON PLACEHOLDER (bitmap): Humidity/Dew – podmień ICON_DROP_10x10
                 draw_icon_drop(canvas, x + 9, y + 7);
-                snprintf(buf, sizeof(buf), "H: %.1f%%  Dew: %.1fC", (double)hum, (double)dew);
+                if(app->gas_enabled) {
+                    snprintf(buf, sizeof(buf), "H: Off (Gas mode)");
+                } else {
+                    snprintf(buf, sizeof(buf), "H: %.1f%%  Dew: %.1fC", (double)hum, (double)dew);
+                }
                 canvas_draw_str(canvas, x + 18, y + 10, buf);
             } break;
             case 3: {
@@ -1022,10 +1038,14 @@ static void draw_about_screen(Canvas* canvas, BME680App* app) {
     canvas_draw_str_aligned(canvas, 64, 5, AlignCenter, AlignTop, "About");
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, 64, 30, AlignCenter, AlignTop, "BME680 Application");
-    canvas_draw_str_aligned(canvas, 64, 40, AlignCenter, AlignTop, "Gas/T/P/H Sensor");
+    canvas_draw_str_aligned(canvas, 64, 18, AlignCenter, AlignTop, "BME680 Application");
+    canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignTop, "Gas/T/P/H Sensor");
+    
+    canvas_draw_str_aligned(canvas, 64, 38, AlignCenter, AlignTop, "Note: During gas measurement,");
+    canvas_draw_str_aligned(canvas, 64, 46, AlignCenter, AlignTop, "T&H readings are disabled due");
+    canvas_draw_str_aligned(canvas, 64, 54, AlignCenter, AlignTop, "to heater interference");
 
-    canvas_draw_str_aligned(canvas, 64, 60, AlignCenter, AlignBottom, "[Ok] Back");
+    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "[Ok] Back");
 }
 
 static void draw_start_confirm_screen(Canvas* canvas, BME680App* app) {
@@ -1167,7 +1187,14 @@ static void bme680_input_callback(InputEvent* input_event, void* ctx) {
                 }
             } else if(input_event->key == InputKeyOk) {
                 if(app->settings_cursor == SettingsItem_Start) {
-                    app->current_state = AppState_StartConfirm;
+                    // Start measurement immediately without confirmation screen
+                    if(can_start_measurement(app)) {
+                        app->started = true;
+                        app->is_sensor_initialized = false;
+                        app->entry_exit_cooldown = false;
+                        app->current_state = AppState_Main;
+                    }
+                    // If can't start yet (cooldown), just ignore the input
                 } else if(app->settings_cursor == SettingsItem_DarkMode) {
                     app->dark_mode = !app->dark_mode;
                     bme680_save_config(app);
