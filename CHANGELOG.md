@@ -2,6 +2,19 @@
 
 All notable changes to the BME680 Gas Sensor project will be documented in this file.
 
+## [1.2] - 2025-11-09
+
+### Added / Changed
+- Commented out the test option in the UI and configuration (code retained, not removed).
+- About screen is now scrollable — shows 4 lines per page; navigation: → opens, ↑/↓ scroll pages.
+- Set the application author to "Dr.Mosfet" (header and package metadata).
+- Simplified code comments and translated them to concise English.
+- Added a key press click sound — short A5 (~880 Hz) tone for ~50 ms; louder and more audible.
+- Verification: project built and packaged locally (fap) after the changes.
+
+### Notes
+- When adding persistent settings (e.g., click volume), it's recommended to bump the configuration version and add migration logic.
+
 ## [1.2] - 2025-11-02
 
 ### Added

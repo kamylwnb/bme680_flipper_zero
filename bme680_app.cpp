@@ -1,3 +1,10 @@
+/*
+ * BME680 SENSOR APPLICATION - FLIPPER ZERO
+ * Author: Dr.Mosfet
+ * Date: Nov 2025
+ */
+
+// System headers
 #include "furi.h"
 #include "furi_hal.h"
 #include "gui/gui.h"
@@ -5,66 +12,82 @@
 #include <furi_hal_i2c.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_bus.h>
-#include "bme68x.h"
-#include "bme68x_defs.h"
-#include <stdio.h> // snprintf
-#include <string.h>
-#include <math.h>
 #include <storage/storage.h>
 #include <notification/notification.h>
 #include <notification/notification_messages.h>
+// small click sequence (approx 25ms) for keypress feedback
+static const NotificationSequence sequence_click_short = {
+    &message_note_a5,
+    &message_delay_50,
+    NULL,
+};
 #include <furi_hal_rtc.h>
 
-// BME680 I2C address options
+// BME680 driver
+#include "bme68x.h"
+#include "bme68x_defs.h"
+
+// Standard libraries
+#include <stdio.h>
+#include <string.h>
+#include <math.h>
+
+// I2C addresses
 #define BME680_I2C_ADDR_LOW  0x77
 #define BME680_I2C_ADDR_HIGH 0x76
 #define BME680_I2C_TIMEOUT   100
 
+// Config file
 #define BME680_CONFIG_FILE    "/ext/apps_data/bme680/config.bin"
-#define BME680_CONFIG_MAGIC   0x42534D45 // "BSME"
+#define BME680_CONFIG_MAGIC   0x42534D45
 #define BME680_CONFIG_VERSION 1
 
-// Gas danger thresholds
-#define GAS_DANGER_THRESHOLD_LOW 50000 // Below this = dangerous gas levels
-#define GAS_SAFE_THRESHOLD_HIGH  100000 // Above this = safe gas levels
-// Between these values = uncertain/transition zone
+// Gas thresholds
+#define GAS_DANGER_THRESHOLD_LOW 50000
+#define GAS_SAFE_THRESHOLD_HIGH  100000
 
-// Gas stabilization period in seconds
+// Timers
 #define GAS_STABILIZATION_TIME_SEC 30
-// Entry/exit cooldown period in seconds
 #define ENTRY_EXIT_COOLDOWN_SEC    60
 
-// Application States
+// App states
 typedef enum {
     AppState_Main,
     AppState_Settings,
     AppState_About,
     AppState_StartConfirm,
-    AppState_Legend, // Legend screen with icon explanations and author
+    AppState_Legend,
 } AppState;
 
-// Gas Safety States
+// Gas safety states
 typedef enum {
-    GasSafety_Unknown, // Initial state or no gas readings
-    GasSafety_Safe, // Gas levels are safe (high resistance)
-    GasSafety_Dangerous, // Gas levels are dangerous (low resistance)
-    GasSafety_Warning // Gas levels in transition zone
+    GasSafety_Unknown,
+    GasSafety_Safe,
+    GasSafety_Dangerous,
+    GasSafety_Warning
 } GasSafetyState;
 
-// Enumeration for options in the settings menu
+// Settings menu items
 typedef enum {
     SettingsItem_Start,
     SettingsItem_Address,
     SettingsItem_OperationMode,
-    SettingsItem_GasSensor, // Enable/disable heater (gas)
-    SettingsItem_GasThreshold, // Gas alarm threshold in kOhm
-    SettingsItem_Altitude, // Altitude in meters for sea-level pressure calc
-    SettingsItem_Legend, // Legend: icons and author info
+    SettingsItem_GasSensor,
+    SettingsItem_GasThreshold,
+    SettingsItem_Altitude,
+    SettingsItem_Legend,
     SettingsItem_DarkMode,
+    SettingsItem_KeyBeep, // Toggle key press beep (20ms)
     SettingsItem_Count
 } SettingsItem;
 
-// Configuration structure for persistent storage
+// Key click notification sequence (click + 50ms delay)
+static const NotificationSequence sequence_key_click = {
+    &message_click,
+    &message_delay_50,
+    NULL,
+};
+// Config structure (saved to file)
 typedef struct {
     uint32_t magic;
     uint8_t version;
@@ -73,65 +96,74 @@ typedef struct {
     bool gas_enabled;
     bool dark_mode;
     float altitude_m;
-    uint32_t gas_alarm_threshold_kohm; // Gas alarm threshold in kOhm
+    uint32_t gas_alarm_threshold_kohm;
+    bool key_beep_enabled; // enable click sound on key press
 } BME680Config;
 
-// Structure to store application state
+// Main app structure
 typedef struct {
+    // System
     Gui* gui;
     ViewPort* view_port;
     FuriMutex* mutex;
+    
+    // App state
     AppState current_state;
     bool running;
-    bool is_sensor_initialized;
     bool started;
+    
+    // BME680 sensor
+    bool is_sensor_initialized;
     struct bme68x_dev bme;
     struct bme68x_conf conf;
     struct bme68x_data sensor_data[3];
-    uint8_t settings_cursor;
+    int8_t last_error;
+    
+    // User config
     uint8_t i2c_address;
     uint8_t op_mode;
-    int8_t last_error;
+    bool gas_enabled;
     bool dark_mode;
-
+    float altitude_m;
+    // bool test_option_enabled; // Commented out
+    bool key_beep_enabled; // Toggle key beep feedback
+    
     // Sensor readings
     float temperature;
     float pressure;
     float humidity;
     uint32_t gas_resistance;
+    float dew_point_c;
     uint8_t data_status;
+    
+    // Timers
     uint16_t sample_interval_ms;
     uint16_t sample_elapsed_ms;
     uint16_t heatr_dur_ms;
-    bool gas_enabled; // heater/gas toggle
-    float dew_point_c; // calculated dew point
-    float altitude_m; // user altitude [m] for sea-level pressure calc
-    // Scroll state for main screen cards
-    uint8_t list_offset; // index of the first visible item (0..items_count-visible)
-    // Legend pan (2D)
+    
+    // UI
+    uint8_t settings_cursor;
+    uint8_t list_offset;
     int16_t legend_pan_x;
     int16_t legend_pan_y;
-
-    // Gas safety monitoring
+    uint8_t about_scroll;
+    
+    // Gas safety system
     GasSafetyState gas_safety_state;
     uint32_t gas_safety_timer_ms;
     bool led_notification_active;
-    uint32_t gas_alarm_threshold_kohm; // User-configurable alarm threshold in kOhm
-    uint32_t gas_stabilization_start_time; // RTC timestamp when measurement started
-    bool gas_stabilization_period; // True during 30s stabilization period
-    uint32_t last_measurement_stop_time; // RTC timestamp when measurement was last stopped
-    bool entry_exit_cooldown; // True during 1min cooldown between start/stop
+    uint32_t gas_alarm_threshold_kohm;
+    uint32_t gas_stabilization_start_time;
+    bool gas_stabilization_period;
+    uint32_t last_measurement_stop_time;
+    bool entry_exit_cooldown;
     NotificationApp* notification;
 } BME680App;
 
-// --- Configuration File Functions ---
-
+// Save config to file
 static bool bme680_save_config(BME680App* app) {
     Storage* storage = (Storage*)furi_record_open(RECORD_STORAGE);
-
-    // Create directory if it doesn't exist
     storage_simply_mkdir(storage, "/ext/apps_data/bme680");
-
     File* file = storage_file_alloc(storage);
 
     bool success = false;
@@ -145,6 +177,7 @@ static bool bme680_save_config(BME680App* app) {
             .dark_mode = app->dark_mode,
             .altitude_m = app->altitude_m,
             .gas_alarm_threshold_kohm = app->gas_alarm_threshold_kohm,
+            .key_beep_enabled = app->key_beep_enabled,
         };
 
         size_t written = storage_file_write(file, &config, sizeof(BME680Config));
@@ -152,13 +185,9 @@ static bool bme680_save_config(BME680App* app) {
         storage_file_close(file);
 
         if(success) {
-            FURI_LOG_I("BME680", "Config saved: %zu bytes to %s", written, BME680_CONFIG_FILE);
+            FURI_LOG_I("BME680", "Config saved: %zu bytes", written);
         } else {
-            FURI_LOG_E(
-                "BME680",
-                "Failed to write config (wrote %zu/%zu bytes)",
-                written,
-                sizeof(BME680Config));
+            FURI_LOG_E("BME680", "Config save failed");
         }
     } else {
         FURI_LOG_E("BME680", "Failed to open config file for writing: %s", BME680_CONFIG_FILE);
@@ -208,6 +237,9 @@ static bool bme680_load_config(BME680App* app) {
             if(config.gas_alarm_threshold_kohm >= 1 && config.gas_alarm_threshold_kohm <= 1000) {
                 app->gas_alarm_threshold_kohm = config.gas_alarm_threshold_kohm;
             }
+
+            // Load key beep setting (if present)
+            app->key_beep_enabled = config.key_beep_enabled;
 
             success = true;
             FURI_LOG_I(
@@ -1020,6 +1052,18 @@ static void draw_settings_screen(Canvas* canvas, BME680App* app) {
             canvas_draw_str_aligned(
                 canvas, 113, y_pos - 1, AlignRight, AlignTop, app->dark_mode ? "(*)" : "( )");
             break;
+
+        case SettingsItem_KeyBeep:
+            canvas_draw_str(canvas, 5, y_pos + 5, "Key Beep:");
+            canvas_draw_str_aligned(
+                canvas, 113, y_pos - 1, AlignRight, AlignTop, app->key_beep_enabled ? "(*)" : "( )");
+            break;
+
+        // case SettingsItem_TestOption: // ⭐ RYSOWANIE NOWEJ OPCJI - ZAKOMENTOWANE
+        //     canvas_draw_str(canvas, 5, y_pos + 5, "Test Option:");
+        //     canvas_draw_str_aligned(
+        //         canvas, 113, y_pos - 1, AlignRight, AlignTop, app->test_option_enabled ? "(*)" : "( )");
+        //     break;
         }
         canvas_set_color(canvas, ColorBlack);
     }
@@ -1032,20 +1076,57 @@ static void draw_settings_screen(Canvas* canvas, BME680App* app) {
 }
 
 static void draw_about_screen(Canvas* canvas, BME680App* app) {
-    UNUSED(app);
     canvas_clear(canvas);
     canvas_set_font(canvas, FontPrimary);
     canvas_draw_str_aligned(canvas, 64, 5, AlignCenter, AlignTop, "About");
 
     canvas_set_font(canvas, FontSecondary);
-    canvas_draw_str_aligned(canvas, 64, 18, AlignCenter, AlignTop, "BME680 Application");
-    canvas_draw_str_aligned(canvas, 64, 28, AlignCenter, AlignTop, "Gas/T/P/H Sensor");
     
-    canvas_draw_str_aligned(canvas, 64, 38, AlignCenter, AlignTop, "Note: During gas measurement,");
-    canvas_draw_str_aligned(canvas, 64, 46, AlignCenter, AlignTop, "T&H readings are disabled due");
-    canvas_draw_str_aligned(canvas, 64, 54, AlignCenter, AlignTop, "to heater interference");
-
-    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "[Ok] Back");
+    // Definicja wszystkich linii tekstu do wyświetlenia
+    const char* text_lines[] = {
+        "BME680 Application",
+        "Gas/T/P/H Sensor",
+        "",
+        "Features:",
+        "- Temperature measurement",
+        "- Humidity measurement", 
+        "- Pressure measurement",
+        "- Gas resistance detection",
+        "- Safety alarm system",
+        "- Configurable thresholds",
+        "",
+        "Gas Sensor Notes:",
+        "During gas measurement,",
+        "T&H readings are disabled",
+        "due to heater interference.",
+        "",
+        "Navigation:",
+        "Up/Down - Scroll content",
+        "Ok/Back - Return to main",
+        "",
+        "Version: 1.2",
+        "Author: Dr.Mosfet",
+        "Built: Nov 2025"
+    };
+    
+    const uint8_t total_lines = sizeof(text_lines) / sizeof(text_lines[0]);
+    const uint8_t visible_lines = 4; // 4 linie na ekran
+    const uint8_t line_height = 8;
+    const uint8_t start_y = 18;
+    
+    // Oblicz zakres widocznych linii na podstawie scroll offset
+    uint8_t first_line = app->about_scroll * visible_lines;
+    uint8_t last_line = first_line + visible_lines;
+    if(last_line > total_lines) last_line = total_lines;
+    
+    // Wyświetl widoczne linie
+    for(uint8_t i = first_line; i < last_line; i++) {
+        uint8_t y_pos = start_y + (i - first_line) * line_height;
+        canvas_draw_str_aligned(canvas, 64, y_pos, AlignCenter, AlignTop, text_lines[i]);
+    }
+    
+    // Pokazuj przewodnik nawigacji na dole
+    canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "[Up/Down] Scroll [Ok] Back");
 }
 
 static void draw_start_confirm_screen(Canvas* canvas, BME680App* app) {
@@ -1101,19 +1182,45 @@ static void bme680_render_callback(Canvas* canvas, void* ctx) {
     }
 }
 
+/**
+ * @brief Funkcja obsługi wejścia (callback dla przycisków)
+ * @param input_event Wydarzenie wciśnięcia przycisku
+ * @param ctx Kontekst aplikacji (wskaźnik BME680App)
+ * 
+ * To jest SERCE INTERAKCJI z użytkownikiem! 
+ * Flipper Zero wywołuje tę funkcję za każdym razem gdy użytkownik:
+ * - Wciśnie przycisk (OK, Back, ↑, ↓, ←, →)
+ * - Przytrzyma przycisk (InputTypeRepeat)
+ * 
+ * Funkcja działa jak STATE MACHINE - różne przyciski robią różne rzeczy
+ * w zależności od aktualnego stanu aplikacji (current_state)
+ */
 static void bme680_input_callback(InputEvent* input_event, void* ctx) {
-    furi_assert(ctx);
-    BME680App* app = (BME680App*)ctx;
+    furi_assert(ctx);  // Sprawdź czy kontekst nie jest NULL (bezpieczeństwo)
+    BME680App* app = (BME680App*)ctx;  // Rzutuj kontekst na naszą strukturę
 
+    // Only handle short presses and repeats
     if(input_event->type == InputTypeShort || input_event->type == InputTypeRepeat) {
+        // Key beep feedback (non-blocking)
+        if(app->key_beep_enabled && app->notification) {
+            notification_message(app->notification, &sequence_click_short);
+        }
+        
+        // === SWITCH PO STANACH APLIKACJI ===
+        // Każdy stan ma swoją logikę obsługi przycisków
         switch(app->current_state) {
+            
+        // --- EKRAN GŁÓWNY (pomiary czujnika) ---
         case AppState_Main:
             if(input_event->key == InputKeyOk) {
+                // OK = przejdź do menu ustawień
                 app->current_state = AppState_Settings;
             } else if(input_event->key == InputKeyBack) {
-                // Back first goes to menu (Settings) before exiting the app
+                // BACK = również przejdź do menu (przed wyjściem z aplikacji)
                 app->current_state = AppState_Settings;
             } else if(input_event->key == InputKeyRight) {
+                // PRAWO = przejdź do ekranu "O aplikacji"
+                app->about_scroll = 0; // Reset pozycji przewijania
                 app->current_state = AppState_About;
             } else if(input_event->key == InputKeyUp || input_event->key == InputKeyDown) {
                 const int items_count = 5;
@@ -1198,7 +1305,14 @@ static void bme680_input_callback(InputEvent* input_event, void* ctx) {
                 } else if(app->settings_cursor == SettingsItem_DarkMode) {
                     app->dark_mode = !app->dark_mode;
                     bme680_save_config(app);
-                } else if(app->settings_cursor == SettingsItem_Legend) {
+                } else if(app->settings_cursor == SettingsItem_KeyBeep) {
+                    app->key_beep_enabled = !app->key_beep_enabled;
+                    bme680_save_config(app);
+                } // else if(app->settings_cursor == SettingsItem_TestOption) { // ⭐ OBSŁUGA NOWEJ OPCJI - ZAKOMENTOWANE
+                //     app->test_option_enabled = !app->test_option_enabled;
+                //     bme680_save_config(app);
+                // } 
+                else if(app->settings_cursor == SettingsItem_Legend) {
                     // Open Legend screen and reset pan
                     app->legend_pan_x = 0;
                     app->legend_pan_y = 0;
@@ -1209,11 +1323,26 @@ static void bme680_input_callback(InputEvent* input_event, void* ctx) {
             }
             break;
 
-        case AppState_About:
-            if(input_event->key == InputKeyOk || input_event->key == InputKeyBack) {
+        case AppState_About: {
+            // Obsługa przewijania w ekranie About
+            const uint8_t total_lines = 23; // Liczba wszystkich linii tekstu
+            const uint8_t visible_lines = 4; // Linie widoczne na ekranie
+            const uint8_t max_scroll_pages = (total_lines + visible_lines - 1) / visible_lines;
+            
+            if(input_event->key == InputKeyUp) {
+                if(app->about_scroll > 0) {
+                    app->about_scroll--;
+                }
+            } else if(input_event->key == InputKeyDown) {
+                if(app->about_scroll < max_scroll_pages - 1) {
+                    app->about_scroll++;
+                }
+            } else if(input_event->key == InputKeyOk || input_event->key == InputKeyBack) {
+                app->about_scroll = 0; // Reset scroll position
                 app->current_state = AppState_Main;
             }
             break;
+        }
 
         case AppState_StartConfirm:
             if(input_event->key == InputKeyOk) {
@@ -1267,11 +1396,13 @@ static BME680App* bme680_app_alloc() {
     app->sample_interval_ms = 1000;
     app->sample_elapsed_ms = 0;
     app->gas_enabled = true;
+    app->key_beep_enabled = true; // default: key beep enabled
     app->dew_point_c = 0.0f;
     app->altitude_m = 0.0f;
     app->list_offset = 0;
     app->legend_pan_x = 0;
     app->legend_pan_y = 0;
+    app->about_scroll = 0;
 
     app->temperature = 0.0f;
     app->pressure = 0.0f;
